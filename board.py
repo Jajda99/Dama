@@ -7,8 +7,8 @@ class Board:
         
     def setup_pieces(self):
         """Rozmístí počáteční figurky na desku"""
-        for j in range(1):
-            #self.pole[0][j * 2 + 1] = Piece("white", "pawn")
+        for j in range(4):
+            self.pole[0][j * 2 + 1] = Piece("white", "pawn")
             self.pole[1][j * 2] = Piece("white", "pawn")
             self.pole[6][j * 2 + 1] = Piece("black", "pawn")
             self.pole[7][j * 2] = Piece("black", "pawn")
