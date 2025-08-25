@@ -16,7 +16,6 @@ class Game:
         pygame.init()
         
         clock = pygame.time.Clock()
-        self.running = True
         
         while self.running:
             # Zobrazí aktuální stav hry
@@ -28,26 +27,22 @@ class Game:
             # Zpracuje tahy AI, pokud je aktuální hráč AI
             self._process_ai_turn(visual_renderer)
 
+            self._check_game_end(visual_renderer)
+
             # Udržuje frekvenci snímků
             clock.tick(60)
         pygame.quit()
         return
-        
-        # Spočítá figurky a zkontroluje vítězství vyřazením
-        bili, cerni = self.pocetfigurek()
-        if cerni == 0:
-            Visual().display_end("white")
-            exit()
-        elif bili == 0:
-            Visual().display_end("black")
-            exit()
+    
+    def _check_game_end(self, visual_renderer):
+        game_status = self.board.check_game_status()
+        if game_status["status"] == "game_over":
+            visual_renderer.draw_game_state(self)
+            pygame.time.wait(1000)
+            visual_renderer.display_end(game_status["winner"])
+            self.running = False
+        return
 
-        # Zkontroluje, zda je soupeř zablokován po tomto skoku
-        opponent_color = "black" if self.pole[x2][y2].color == "white" else "white"
-        if self.no_moves_available(opponent_color):
-            # Soupeř nemá tahy
-            Visual().display_end(self.pole[x2][y2].color)
-            exit()
     def _process_events(self, visual_renderer):
         """Zpracuje události pygame a uživatelské vstupy"""
         for event in pygame.event.get():
@@ -159,16 +154,6 @@ class Game:
             # Změna hráče
             self.current = 1 - self.current
             self.current_player = self.players[self.current].color
-
-            # zkontroluj jestli má další hráč platné tahy
-            if self.board.no_moves_available(self.current_player):
-                # hráč nemůže táhnout
-                self.add_message(f"Hráč {self.current_player} nemůže táhnout!")
-
-                # Konec hry - vyhrává druhý hráč
-                winner = "black" if self.current_player == "white" else "white"
-                from visual import Visual
-                Visual().display_end(winner)
             
     def moznostSkoku(self, color):
         figurky_bile, figurky_cerne = self.vsechny_figurky()

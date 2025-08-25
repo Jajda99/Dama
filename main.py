@@ -21,7 +21,6 @@ def main():
     game = Game(p1, p2)
     renderer = VisualRenderer()
     game.run_game(renderer)
-    renderer.display_end(game.winner)
 
 
 if __name__ == "__main__":

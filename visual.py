@@ -148,15 +148,6 @@ class VisualRenderer:
                 elif event.type == pygame.KEYDOWN or event.type == pygame.MOUSEBUTTONDOWN:
                     waiting = False
 
-# Funkce pro spuštění hry s novou architekturou
-def run_gui_game(p1, p2):
-    """Spustí hru s grafickým rozhraním"""
-    pygame.init()
-    game = Game(p1, p2)
-    renderer = VisualRenderer()
-    game.run_game(renderer)
-    pygame.quit()
-
 # Zachování funkce menu
 def start_menu():
     """Zobrazí úvodní menu pro výběr herního režimu"""
