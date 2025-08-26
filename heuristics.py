@@ -4,10 +4,10 @@
 
 from typing import List, Tuple
 
-# ------- Nastavení vah (vyladíš hraním / self-play) -------
+# Nastavení vah
 W_KING      = 2.8     # 1) dáma zhruba ~2.5–3× silnější než pěšec
 W_MOB       = 0.08    # 2) mobilita (počet legálních tahů)
-W_CAPTURE   = 0.50    # 3) mám-li capture a soupeř ne (a naopak)
+W_CAPTURE   = 1.0     # 3) mám-li capture a soupeř ne (a naopak)
 W_THREAT    = 1.0     # 3) penalizace za můj kámen, který soupeř může hned sebrat (za kus)
 W_PROMO     = 0.15    # 4) bonus za blízkost proměny (pěšci)
 W_CENTER    = 0.05    # 5) bonus za kámen v centru- strategie v damách
@@ -22,58 +22,66 @@ def evaluate_position(game, me_color: str):
     """
     Vrátí reálné skóre pozice z pohledu 'me_color'.
     Kladné = lepší pro mě, záporné = horší.
-    Zohledňuje body 1–5 (viz výše).
+    Zohledňuje body 1-5 (viz výše).
     """
 
-    # ---------------------- 1) MATERIÁL ----------------------
-    my_pawns, my_kings, op_pawns, op_kings = _count_material(game, me_color)
+    #  MATERIÁL
+    my_pawns, my_kings, op_pawns, op_kings = count_material(game, me_color)
     material = (my_pawns + W_KING * my_kings) - (op_pawns + W_KING * op_kings)
 
-    # ---------------------- 2) MOBILITA ----------------------
-    my_moves = _count_legal_moves(game, me_color)
-    op_moves = _count_legal_moves(game, _opp(me_color))
+    #  MOBILITA
+    my_moves = count_legal_moves(game, me_color)
+    op_moves = count_legal_moves(game, opp(me_color))
     mobility = W_MOB * (my_moves - op_moves)
 
-    # ---------------- 3) POVINNÉ BRANÍ & HROZBY ----------------
+    # POVINNÉ BRANÍ & HROZBY
     # Povinné braní – mít capture je „dobře“ (tempo i změna materiálu)
     my_can_capture = 1 if game.moznostSkoku(me_color) else 0
-    op_can_capture = 1 if game.moznostSkoku(_opp(me_color)) else 0
+    op_can_capture = 1 if game.moznostSkoku(opp(me_color)) else 0
     capture_pressure = W_CAPTURE * (my_can_capture - op_can_capture)
 
     # Kolik mých kamenů je přímo k sebrání jedním skokem soupeře?
-    my_threatened = _count_threatened_pieces(game, me_color)
+    my_threatened = count_threatened_pieces(game, me_color)
     threats_penalty = - W_THREAT * my_threatened
 
-    # -------------------- 4) TLAK NA PROMĚNU --------------------
+    # TLAK NA PROMĚNU
     # Jednoduché: čím blíž poslední řadě, tím větší bonus (jen pěšci)
-    promo = W_PROMO * (_promotion_progress(game, me_color) -
-                       _promotion_progress(game, _opp(me_color)))
+    promo = W_PROMO * (promotion_progress(game, me_color) -
+                       promotion_progress(game, opp(me_color)))
 
-    # ------------------ 5) CENTRUM & FORMAce -------------------
-    center_score = W_CENTER * (_count_in_center(game, me_color) -
-                               _count_in_center(game, _opp(me_color)))
-    formation_score = W_FORMATION * (_formation_pairs(game, me_color) -
-                                     _formation_pairs(game, _opp(me_color)))
+    # CENTRUM & FORMAce
+    center_score = W_CENTER * (count_in_center(game, me_color) -
+                               count_in_center(game, opp(me_color)))
+    formation_score = W_FORMATION * (formation_pairs(game, me_color) -
+                                     formation_pairs(game, opp(me_color)))
 
-    return material + mobility + capture_pressure + threats_penalty + promo + center_score + formation_score
+    # Penalizace za opakování pozice (cyklení)
+    repetition_penalty = 0
+    if hasattr(game, 'state_history'):
+        # Pokud se aktuální pozice vyskytla už 2x nebo víc, penalizuj
+        current_hash = game._board_state_hash()
+        repeats = game.state_history.count(current_hash)
+        if repeats >= 2:
+            repetition_penalty = -2.0 * repeats  # váhu můžeš upravit
+    return material + mobility + capture_pressure + threats_penalty + promo + center_score + formation_score + repetition_penalty
 
 
-# ========================= Pomocné funkce =========================
+#  Pomocné funkce
 
-def _opp(color: str) -> str:
+def opp(color: str) -> str:
     return "white" if color == "black" else "black"
 
 
-def _iterate_pieces(game, color: str) -> List[Tuple[int, int]]:
+def iterate_pieces(game, color: str) -> List[Tuple[int, int]]:
     whites, blacks = game.vsechny_figurky()
     return whites if color == "white" else blacks
 
 
-def _count_material(game, me_color: str):
+def count_material(game, me_color: str):
     """Spočítá (my_pawns, my_kings, op_pawns, op_kings)."""
     def split(color: str):
         pawns = kings = 0
-        for x, y in _iterate_pieces(game, color):
+        for x, y in iterate_pieces(game, color):
             p = game.board.pole[x][y]
             if p.type == "queen":
                 kings += 1
@@ -82,18 +90,18 @@ def _count_material(game, me_color: str):
         return pawns, kings
 
     my_pawns, my_kings = split(me_color)
-    op_pawns, op_kings = split(_opp(me_color))
+    op_pawns, op_kings = split(opp(me_color))
     return my_pawns, my_kings, op_pawns, op_kings
 
 
-def _count_legal_moves(game, color: str) -> int:
+def count_legal_moves(game, color: str) -> int:
     """
     Vrátí počet legálních tahů pro danou barvu. Respektuje povinné braní:
     pokud existuje skok, vrátí jen počet skoků.
-    (Bez simulace – jen lokální kontrola podle desky.)
+    (Bez simulace - jen lokální kontrola podle desky.)
     """
     board = game.board
-    my_figs = _iterate_pieces(game, color)
+    my_figs = iterate_pieces(game, color)
 
     jumps = 0
     steps = 0
@@ -125,14 +133,14 @@ def _count_legal_moves(game, color: str) -> int:
     return jumps if jumps > 0 else steps
 
 
-def _count_threatened_pieces(game, my_color: str) -> int:
+def count_threatened_pieces(game, my_color: str) -> int:
     """
     Spočítá, kolik mých kamenů může soupeř sebrat JEDNÍM skokem z aktuální pozice.
     (Hrubý, ale rychlý odhad taktického rizika.)
     """
     board = game.board
-    opp_color = _opp(my_color)
-    opp_figs = _iterate_pieces(game, opp_color)
+    opp_color = opp(my_color)
+    opp_figs = iterate_pieces(game, opp_color)
 
     threatened_positions = set()
 
@@ -153,7 +161,7 @@ def _count_threatened_pieces(game, my_color: str) -> int:
     return len(threatened_positions)
 
 
-def _promotion_progress(game, color: str) -> float:
+def promotion_progress(game, color: str) -> float:
     """
     Jednoduchý součet „pokroku“ pěšců k proměně (normalizovaný).
     Bílý: vyšší x = blíž k proměně; Černý: nižší x = blíž.
@@ -161,7 +169,7 @@ def _promotion_progress(game, color: str) -> float:
     """
     total = 0.0
     count = 0
-    for x, y in _iterate_pieces(game, color):
+    for x, y in iterate_pieces(game, color):
         p = game.board.pole[x][y]
         if p.type == "pawn":
             if color == "white":
@@ -173,22 +181,22 @@ def _promotion_progress(game, color: str) -> float:
     return total if count == 0 else total  # suma (ne průměr), ať víc pěšců => víc tlaku
 
 
-def _count_in_center(game, color: str) -> int:
+def count_in_center(game, color: str) -> int:
     """Počet kamenů v jednoduchém 'centru' (řádky/ sloupce 2..5)."""
     cnt = 0
-    for x, y in _iterate_pieces(game, color):
+    for x, y in iterate_pieces(game, color):
         if x in CENTER_ROWS and y in CENTER_COLS:
             cnt += 1
     return cnt
 
 
-def _formation_pairs(game, color: str) -> int:
+def formation_pairs(game, color: str) -> int:
     """
     Hrubé měřítko souhry: kolik mám diagonálně sousedících dvojic (±1,±1).
     (Válcový sloupec řešíme mod 8.)
     """
     board = game.board
-    my_set = set(_iterate_pieces(game, color))
+    my_set = set(iterate_pieces(game, color))
     pairs = 0
     for x, y in my_set:
         for dx, dy in ((1, 1), (1, -1), (-1, 1), (-1, -1)):
